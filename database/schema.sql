@@ -1,15 +1,38 @@
-CREATE DATABASE IF NOT EXISTS hospital_surgery_db;
-USE hospital_surgery_db;
+-- 1. Desactivar comprobación de claves ajenas para permitir el borrado
+SET FOREIGN_KEY_CHECKS = 0;
 
+-- 2. Borrar todas las tablas en orden
+DROP TABLE IF EXISTS surgical_report_versions;
+DROP TABLE IF EXISTS surgical_reports;
+DROP TABLE IF EXISTS operation_team;
+DROP TABLE IF EXISTS schedule;
+DROP TABLE IF EXISTS operation_costs;
+DROP TABLE IF EXISTS operation_images;
+DROP TABLE IF EXISTS surgical_operations;
+DROP TABLE IF EXISTS procedures;
+DROP TABLE IF EXISTS surgical_complications;
+
+DROP TABLE IF EXISTS operating_rooms;
+DROP TABLE IF EXISTS system_users;
+DROP TABLE IF EXISTS professionals;
+
+-- 3. Volver a activar las restricciones
+SET FOREIGN_KEY_CHECKS = 1;
 CREATE TABLE professionals (
     id_professional INT AUTO_INCREMENT PRIMARY KEY,
     professional_name VARCHAR(150) NOT NULL,
-    professional_type VARgit statusCHAR(30) NOT NULL
-        CHECK (professional_type IN ('surgery', 'anaesthesia', 'nursing')),
-    professional_category VARCHAR(30) NOT NULL
-        CHECK (professional_category IN ('Resident', 'Specialist', 'Consultant')),
+    professional_type VARCHAR(30) NOT NULL,
+    professional_category VARCHAR(30) NOT NULL,
     professional_email VARCHAR(255) UNIQUE,
-    professional_phone VARCHAR(25)
+    professional_phone VARCHAR(25),
+
+    CONSTRAINT chk_professional_type CHECK (
+        professional_type IN ('surgery', 'anaesthesia', 'nursing')
+    ),
+
+    CONSTRAINT chk_professional_category CHECK (
+        professional_category IN ('Resident', 'Specialist', 'Consultant')
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE operating_rooms (
@@ -64,14 +87,7 @@ CREATE TABLE surgical_operations (
     actual_room_start DATETIME,
     actual_room_end DATETIME,
 
-    status_so VARCHAR(30) NOT NULL
-        CHECK (status_so IN (
-            'scheduled',
-            'in_progress',
-            'completed',
-
-            'cancelled'
-        )),
+    status_so VARCHAR(30) NOT NULL,
 
     CONSTRAINT fk_surgical_ops_room
         FOREIGN KEY (id_room)
@@ -85,21 +101,22 @@ CREATE TABLE surgical_operations (
         ON DELETE SET NULL
         ON UPDATE CASCADE,
 
-    -- Verify surgery end time is after start time
+    CONSTRAINT chk_status_so CHECK (
+        status_so IN ('scheduled', 'in_progress', 'completed', 'cancelled')
+    ),
+
     CONSTRAINT chk_surgery_times CHECK (
         actual_surgery_start IS NULL
         OR actual_surgery_end IS NULL
         OR actual_surgery_end > actual_surgery_start
     ),
 
-    -- Verify room end time is after start time
     CONSTRAINT chk_room_times CHECK (
         actual_room_start IS NULL
         OR actual_room_end IS NULL
         OR actual_room_end > actual_room_start
     ),
 
-    -- Completed operations must have all room and surgery timestamps recorded
     CONSTRAINT chk_completed_times CHECK (
         status_so != 'completed'
         OR (
@@ -123,16 +140,12 @@ CREATE TABLE schedule (
     scheduled_room_start DATETIME NOT NULL,
     scheduled_room_end DATETIME NOT NULL,
 
-    status_s VARCHAR(30) NOT NULL
-        CHECK (status_s IN (
-            'scheduled',
-            'confirmed',
-            'cancelled',
-            'rescheduled',
-            'completed'
-        )),
+    status_s VARCHAR(30) NOT NULL,
+    rescheduled_from INT NULL,
 
-    rescheduled_from INT,
+    CONSTRAINT chk_status_s CHECK (
+        status_s IN ('scheduled', 'confirmed', 'cancelled', 'rescheduled', 'completed')
+    ),
 
     CONSTRAINT fk_schedule_operation
         FOREIGN KEY (id_operation)
@@ -143,7 +156,7 @@ CREATE TABLE schedule (
     CONSTRAINT fk_schedule_room
         FOREIGN KEY (id_room)
         REFERENCES operating_rooms(id_room)
-        ON DELETE RESTRICT
+        ON DELETE CASCADE
         ON UPDATE CASCADE,
 
     CONSTRAINT fk_schedule_rescheduled_from
@@ -152,16 +165,15 @@ CREATE TABLE schedule (
         ON DELETE SET NULL
         ON UPDATE CASCADE,
 
-    CONSTRAINT chk_sched_surgery_times CHECK (
+    CONSTRAINT chk_scheduled_surgery_times CHECK (
         scheduled_surgery_end > scheduled_surgery_start
     ),
 
-    CONSTRAINT chk_sched_room_times CHECK (
+    CONSTRAINT chk_scheduled_room_times CHECK (
         scheduled_room_end > scheduled_room_start
     ),
 
-    -- Room booking window must contain the surgery window
-    CONSTRAINT chk_room_contains_surgery CHECK (
+    CONSTRAINT chk_scheduled_room_vs_surgery CHECK (
         scheduled_room_start <= scheduled_surgery_start
         AND scheduled_room_end >= scheduled_surgery_end
     )
@@ -173,13 +185,16 @@ CREATE TABLE operation_team (
     id_operation INT NOT NULL,
     id_professional INT NOT NULL,
 
-    role_in_operation VARCHAR(30) NOT NULL
-        CHECK (role_in_operation IN (
+    role_in_operation VARCHAR(30) NOT NULL,
+
+    CONSTRAINT chk_role_in_operation CHECK (
+        role_in_operation IN (
             'surgeon',
             'assistant_surgeon',
             'anaesthesiologist',
             'nurse'
-        )),
+        )
+    ),
 
     CONSTRAINT fk_op_team_operation
         FOREIGN KEY (id_operation)
@@ -190,14 +205,9 @@ CREATE TABLE operation_team (
     CONSTRAINT fk_op_team_professional
         FOREIGN KEY (id_professional)
         REFERENCES professionals(id_professional)
-        ON DELETE RESTRICT
-        ON UPDATE CASCADE,
-
-    -- Prevents assigning the same professional to the exact same role in an operation twice
-    CONSTRAINT uq_operation_professional_role
-        UNIQUE (id_operation, id_professional, role_in_operation)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE operation_costs (
     id_operation_cost INT AUTO_INCREMENT PRIMARY KEY,
 
@@ -265,20 +275,15 @@ CREATE TABLE surgical_complications (
 
 CREATE TABLE surgical_reports (
     id_report INT AUTO_INCREMENT PRIMARY KEY,
-
     id_operation INT NOT NULL UNIQUE,
-
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     current_version INT,
+    status_r VARCHAR(30) NOT NULL,
 
-    status_r VARCHAR(30) NOT NULL
-        CHECK (status_r IN (
-            'draft',
-            'completed',
-            'approved'
-        )),
+    CONSTRAINT chk_status_r CHECK (
+        status_r IN ('draft', 'completed', 'approved')
+    ),
 
-    -- Last version of the report must be 1 or higher
     CONSTRAINT chk_report_version CHECK (
         current_version IS NULL
         OR current_version >= 1
@@ -289,38 +294,27 @@ CREATE TABLE surgical_reports (
         REFERENCES surgical_operations(id_operation)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE surgical_report_versions (
     id_report_version INT AUTO_INCREMENT PRIMARY KEY,
-
     id_report INT NOT NULL,
     version_number INT NOT NULL,
-
     id_professional INT NOT NULL,
-
     report_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    report_content TEXT NOT NULL,
+    report_content TEXT,
 
-    CONSTRAINT fk_rep_versions_report
+    CONSTRAINT fk_report_versions_report
         FOREIGN KEY (id_report)
         REFERENCES surgical_reports(id_report)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
 
-    CONSTRAINT fk_rep_versions_professional
+    CONSTRAINT fk_report_versions_professional
         FOREIGN KEY (id_professional)
         REFERENCES professionals(id_professional)
         ON DELETE RESTRICT
-        ON UPDATE CASCADE,
-
-    CONSTRAINT chk_version_number_positive CHECK (
-        version_number >= 1
-    ),
-
-    -- Prevents duplicate version numbers for the same surgical report
-    CONSTRAINT uq_report_version_number
-        UNIQUE (id_report, version_number)
+        ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE operation_images (
