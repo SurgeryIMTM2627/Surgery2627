@@ -1,5 +1,22 @@
-USE hospital_surgery_db;
 
+-- 1. Desactivar claves ajenas y vaciar todas las tablas antes de insertar
+SET FOREIGN_KEY_CHECKS = 0;
+
+TRUNCATE TABLE surgical_report_versions;
+TRUNCATE TABLE surgical_reports;
+TRUNCATE TABLE operation_team;
+TRUNCATE TABLE schedule;
+TRUNCATE TABLE operation_costs;
+TRUNCATE TABLE operation_images;
+TRUNCATE TABLE surgical_operations;
+TRUNCATE TABLE procedures;
+TRUNCATE TABLE operating_rooms;
+TRUNCATE TABLE system_users;
+TRUNCATE TABLE professionals;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 2. A partir de aquí, tus sentencias INSERT INTO
 INSERT INTO professionals (
     id_professional,
     professional_name,
@@ -8,13 +25,15 @@ INSERT INTO professionals (
     professional_email,
     professional_phone
 )
-VALUES
-    (1, 'Alex Morgan', 'surgery', 'Specialist', 'alex.morgan@example.com', '+34111111111'),
-    (2, 'Taylor Smith', 'surgery', 'Consultant', 'taylor.smith@example.com', '+34222222222'),
-    (3, 'Jordan Lee', 'anaesthesia', 'Specialist', 'jordan.lee@example.com', '+34333333333'),
-    (4, 'Casey Brown', 'nursing', 'Resident', 'casey.brown@example.com', '+34444444444'),
-    (5, 'Riley Davis', 'nursing', 'Specialist', 'riley.davis@example.com', '+34555555555'); 
+VALUES 
+(1, 'Alex Morgan', 'surgery', 'Specialist', 'alex.morgan@example.com', '+34111111111'),
+(2, 'Taylor Smith', 'surgery', 'Consultant', 'taylor.smith@example.com', '+34222222222'),
+(3, 'Jordan Lee', 'anaesthesia', 'Specialist', 'jordan.lee@example.com', '+34333333333'),
+(4, 'Casey Brown', 'nursing', 'Resident', 'casey.brown@example.com', '+34444444444'),
+(5, 'Riley Davis', 'nursing', 'Specialist', 'riley.davis@example.com', '+34555555555');
 
+-- (añade aquí el resto de tus INSERT INTO para las demás tablas: system_users, operating_rooms, etc.)
+ 
 INSERT INTO operating_rooms (
     id_room,
     room_code,
@@ -52,6 +71,7 @@ VALUES
     (1, '0DTJ0ZZ', 'Resection of Appendix, Open Approach'),
     (2, '0DTJ4ZZ', 'Resection of Appendix, Percutaneous Endoscopic Approach');
 
+-- Placeholder patient_id and episode_id values pending confirmation from Group A
 INSERT INTO surgical_operations (
     id_operation,
     patient_id,
@@ -64,23 +84,11 @@ INSERT INTO surgical_operations (
     actual_room_end,
     status_so
 )
-VALUES
-    -- Placeholder patient_id and episode_id values pending confirmation from Group A
-    (1, '1001', '5001', 1, 2,
-     '2026-11-10 09:00:00',
-     '2026-11-10 10:00:00',
-     '2026-11-10 08:30:00',
-     '2026-11-10 10:30:00',
-     'completed'),
+VALUES 
+(1, '1001', '5001', 1, 2, '2026-11-10 09:00:00', '2026-11-10 10:00:00', '2026-11-10 08:30:00', '2026-11-10 10:30:00', 'completed'),
+(2, '1002', '5002', 2, 2, NULL, NULL, NULL, NULL, 'scheduled'),
+(3, '1003', '5003', 2, 1, NULL, NULL, NULL, NULL, 'scheduled');
 
-    -- Actual timestamps remain NULL until the operation is completed
-    (2, '1002', '5002', 2, 2,
-     NULL, NULL, NULL, NULL,
-     'scheduled'),
-
-    (3, '1003', '5003', 2, 1,
-     NULL, NULL, NULL, NULL,
-     'scheduled');
 
 INSERT INTO schedule (
     id_schedule,
