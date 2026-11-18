@@ -1,4 +1,6 @@
 -- 1. Desactivar comprobación de claves ajenas para permitir el borrado
+USE hospital_surgery_db
+
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- 2. Borrar todas las tablas en orden
