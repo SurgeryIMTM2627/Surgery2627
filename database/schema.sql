@@ -358,3 +358,57 @@ CREATE TABLE operation_images (
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE checklist (
+    id_checklist INT AUTO_INCREMENT PRIMARY KEY,
+    id_operation INT NOT NULL,
+    checklist_item VARCHAR(255) NOT NULL,
+    is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    completed_by INT NULL,
+    completion_date DATETIME NULL,
+
+    CONSTRAINT fk_checklist_operation
+        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation),
+
+    CONSTRAINT fk_checklist_completed_by
+        FOREIGN KEY (completed_by) REFERENCES professionals(id_professional),
+
+    CONSTRAINT chk_checklist_completed_fields
+        CHECK (
+            is_completed = FALSE
+            OR (completed_by IS NOT NULL AND completion_date IS NOT NULL)
+        )
+        
+);
+CREATE TABLE professional_audit_log (
+    id_audit INT AUTO_INCREMENT PRIMARY KEY,
+    id_professional INT NOT NULL,
+    action_type VARCHAR(100) NOT NULL,
+    target_table VARCHAR(100) NOT NULL,
+    target_id INT NULL,
+    request_summary TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_audit_professional
+        FOREIGN KEY (id_professional) REFERENCES professionals(id_professional)
+);
+
+CREATE TABLE interconsultations (
+    id_interconsultation INT AUTO_INCREMENT PRIMARY KEY,
+    id_operation INT NULL,
+    requesting_professional INT NOT NULL,
+    requested_specialty VARCHAR(150) NOT NULL,
+    request_date DATETIME NOT NULL,
+    reason TEXT NOT NULL,
+    status_ic VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    response_date DATETIME NULL,
+    response TEXT NULL,
+
+    CONSTRAINT fk_interconsultations_operation
+        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation),
+
+    CONSTRAINT fk_interconsultations_professional
+        FOREIGN KEY (requesting_professional) REFERENCES professionals(id_professional),
+
+    CONSTRAINT chk_interconsultations_status
+        CHECK (status_ic IN ('Pending', 'accepted', 'completed', 'cancelled'))
+);
