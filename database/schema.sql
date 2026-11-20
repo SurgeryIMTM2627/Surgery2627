@@ -4,6 +4,10 @@ USE hospital_surgery_db
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- 2. Borrar todas las tablas en orden
+DROP TABLE IF EXISTS professionals;
+DROP TABLE IF EXISTS system_users;
+DROP TABLE IF EXISTS operating_rooms;
+DROP TABLE IF EXISTS procedures;
 DROP TABLE IF EXISTS surgical_report_versions;
 DROP TABLE IF EXISTS surgical_reports;
 DROP TABLE IF EXISTS operation_team;
@@ -11,12 +15,11 @@ DROP TABLE IF EXISTS schedule;
 DROP TABLE IF EXISTS operation_costs;
 DROP TABLE IF EXISTS operation_images;
 DROP TABLE IF EXISTS surgical_operations;
-DROP TABLE IF EXISTS procedures;
 DROP TABLE IF EXISTS surgical_complications;
-
-DROP TABLE IF EXISTS operating_rooms;
-DROP TABLE IF EXISTS system_users;
-DROP TABLE IF EXISTS professionals;
+DROP TABLE IF EXISTS checklist;
+DROP TABLE IF EXISTS interconsultations;
+DROP TABLE IF EXISTS professional_audit_log;
+DROP TABLE IF EXISTS surgical_consumptions;
 
 -- 3. Volver a activar las restricciones
 SET FOREIGN_KEY_CHECKS = 1;
@@ -79,7 +82,7 @@ CREATE TABLE surgical_operations (
     id_operation INT AUTO_INCREMENT PRIMARY KEY,
     id_patient INT NOT NULL,
     id_episode INT NOT NULL,
-    id_operating_room INT NOT NULL,
+    id__room INT NOT NULL,
     parent_operation_id INT NULL,
     procedure_code VARCHAR(30) NULL,
     procedure_name VARCHAR(255) NOT NULL,
@@ -96,16 +99,15 @@ CREATE TABLE surgical_operations (
     surgical_report TEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_operations_patient
-        FOREIGN KEY (id_patient) REFERENCES patients(id_patient)
-        ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_operations_patient (id_patient),
+    INDEX idx_operations_episode (id_episode),
 
     CONSTRAINT fk_operations_room
         FOREIGN KEY (id_operating_room) REFERENCES operating_rooms(id_operating_room)
         ON DELETE RESTRICT ON UPDATE CASCADE,
 
     CONSTRAINT fk_operations_parent
-        FOREIGN KEY (parent_operation_id) REFERENCES surgical_operations(id_operation)
+        FOREIGN KEY (parent_operation_id) REFERENCES surgical_operations(id_operating_room)
         ON DELETE SET NULL ON UPDATE CASCADE,
 
     CONSTRAINT chk_operations_real_times
@@ -119,7 +121,7 @@ CREATE TABLE schedule (
     id_schedule INT AUTO_INCREMENT PRIMARY KEY,
 
     id_operation INT NOT NULL,
-    id_room INT NOT NULL,
+    id_operating_room INT NOT NULL,
 
     scheduled_surgery_start DATETIME NOT NULL,
     scheduled_surgery_end DATETIME NOT NULL,
@@ -141,8 +143,8 @@ CREATE TABLE schedule (
         ON UPDATE CASCADE,
 
     CONSTRAINT fk_schedule_room
-        FOREIGN KEY (id_room)
-        REFERENCES operating_rooms(id_room)
+        FOREIGN KEY (id_operating_room)
+        REFERENCES operating_rooms(id_operating_room)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
 
@@ -359,9 +361,12 @@ CREATE TABLE professional_audit_log (
 
 CREATE TABLE interconsultations (
     id_interconsultation INT AUTO_INCREMENT PRIMARY KEY,
+    id_episode INT NOT NULL,
     id_operation INT NULL,
     requesting_professional INT NOT NULL,
-    requested_specialty VARCHAR(150) NOT NULL,
+    requesting_specialty VARCHAR(150) NOT NULL, -- ej. 'Urgencias', 'Medicina Interna', 'Cirugía General'
+    requested_specialty VARCHAR(150) NOT NULL,  -- ej. 'Urología', 'Otorrinolaringología', 'Neurocirugía', 'Cirugía General'
+    responding_professional INT NULL,
     request_date DATETIME NOT NULL,
     reason TEXT NOT NULL,
     status_ic VARCHAR(20) NOT NULL DEFAULT 'Pending',
@@ -371,12 +376,15 @@ CREATE TABLE interconsultations (
     CONSTRAINT fk_interconsultations_operation
         FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation),
 
-    CONSTRAINT fk_interconsultations_professional
+    CONSTRAINT fk_interconsultations_req_prof
         FOREIGN KEY (requesting_professional) REFERENCES professionals(id_professional),
+
+    CONSTRAINT fk_interconsultations_resp_prof
+        FOREIGN KEY (responding_professional) REFERENCES professionals(id_professional),
 
     CONSTRAINT chk_interconsultations_status
         CHECK (status_ic IN ('Pending', 'accepted', 'completed', 'cancelled'))
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE surgical_consumptions (
     id_consumption INT AUTO_INCREMENT PRIMARY KEY,
