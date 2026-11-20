@@ -38,14 +38,15 @@ CREATE TABLE professionals (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE operating_rooms (
-    id_room INT AUTO_INCREMENT PRIMARY KEY,
-    room_code VARCHAR(50) NOT NULL UNIQUE,
-    room_name VARCHAR(100) NOT NULL,
-    room_location VARCHAR(150) NOT NULL,
-    room_type VARCHAR(30) NOT NULL
-        CHECK (room_type IN ('urgent', 'programmed', 'hybrid')),
-    room_state VARCHAR(30) NOT NULL
-        CHECK (room_state IN ('available', 'occupied', 'blocked', 'maintenance'))
+    id_operating_room INT AUTO_INCREMENT PRIMARY KEY,
+    room_code VARCHAR(30) NOT NULL UNIQUE,
+    room_name VARCHAR(120) NOT NULL,
+    room_type ENUM('Emergency', 'Scheduled', 'Outpatient', 'Dressing') NOT NULL DEFAULT 'Scheduled',
+    isolation_capacity ENUM('None', 'Contact', 'Respiratory', 'Negative_pressure') NOT NULL DEFAULT 'None',
+    cost_per_minute DECIMAL(8, 2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    CONSTRAINT chk_operating_rooms_cost CHECK (cost_per_minute >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE system_users (
@@ -76,58 +77,42 @@ CREATE TABLE procedures (
 
 CREATE TABLE surgical_operations (
     id_operation INT AUTO_INCREMENT PRIMARY KEY,
+    id_patient INT NOT NULL,
+    id_episode INT NOT NULL,
+    id_operating_room INT NOT NULL,
+    parent_operation_id INT NULL,
+    procedure_code VARCHAR(30) NULL,
+    procedure_name VARCHAR(255) NOT NULL,
+    diagnosis_icd10 VARCHAR(20) NULL,
+    priority_level ENUM('Life_threatening', 'Urgent', 'Scheduled') NOT NULL DEFAULT 'Urgent',
+    operation_status ENUM('Scheduled', 'In_progress', 'Completed', 'Rescheduled', 'Cancelled') NOT NULL DEFAULT 'Scheduled',
+    scheduled_start DATETIME NULL,
+    scheduled_end DATETIME NULL,
+    room_entry_at DATETIME NULL,
+    surgery_start_at DATETIME NULL,
+    surgery_end_at DATETIME NULL,
+    room_exit_at DATETIME NULL,
+    reschedule_reason TEXT NULL,
+    surgical_report TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    patient_id VARCHAR(50) NOT NULL,
-    episode_id VARCHAR(50) NOT NULL,
+    CONSTRAINT fk_operations_patient
+        FOREIGN KEY (id_patient) REFERENCES patients(id_patient)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
 
-    id_room INT,
-    id_procedure INT,
+    CONSTRAINT fk_operations_room
+        FOREIGN KEY (id_operating_room) REFERENCES operating_rooms(id_operating_room)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
 
-    actual_surgery_start DATETIME,
-    actual_surgery_end DATETIME,
+    CONSTRAINT fk_operations_parent
+        FOREIGN KEY (parent_operation_id) REFERENCES surgical_operations(id_operation)
+        ON DELETE SET NULL ON UPDATE CASCADE,
 
-    actual_room_start DATETIME,
-    actual_room_end DATETIME,
-
-    status_so VARCHAR(30) NOT NULL,
-
-    CONSTRAINT fk_surgical_ops_room
-        FOREIGN KEY (id_room)
-        REFERENCES operating_rooms(id_room)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
-
-    CONSTRAINT fk_surgical_ops_procedure
-        FOREIGN KEY (id_procedure)
-        REFERENCES procedures(id_procedure)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
-
-    CONSTRAINT chk_status_so CHECK (
-        status_so IN ('scheduled', 'in_progress', 'completed', 'cancelled')
-    ),
-
-    CONSTRAINT chk_surgery_times CHECK (
-        actual_surgery_start IS NULL
-        OR actual_surgery_end IS NULL
-        OR actual_surgery_end > actual_surgery_start
-    ),
-
-    CONSTRAINT chk_room_times CHECK (
-        actual_room_start IS NULL
-        OR actual_room_end IS NULL
-        OR actual_room_end > actual_room_start
-    ),
-
-    CONSTRAINT chk_completed_times CHECK (
-        status_so != 'completed'
-        OR (
-            actual_surgery_start IS NOT NULL
-            AND actual_surgery_end IS NOT NULL
-            AND actual_room_start IS NOT NULL
-            AND actual_room_end IS NOT NULL
+    CONSTRAINT chk_operations_real_times
+        CHECK (
+            (room_entry_at IS NULL OR room_exit_at IS NULL OR room_exit_at >= room_entry_at)
+            AND (surgery_start_at IS NULL OR surgery_end_at IS NULL OR surgery_end_at >= surgery_start_at)
         )
-    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE schedule (
@@ -183,33 +168,24 @@ CREATE TABLE schedule (
 
 CREATE TABLE operation_team (
     id_operation_team INT AUTO_INCREMENT PRIMARY KEY,
-
     id_operation INT NOT NULL,
     id_professional INT NOT NULL,
+    team_role ENUM('Surgeon', 'Anaesthetist', 'Scrub_nurse', 'Circulating_nurse', 'Nursing_assistant', 'Consultant') NOT NULL,
+    is_lead BOOLEAN NOT NULL DEFAULT FALSE,
 
-    role_in_operation VARCHAR(30) NOT NULL,
+    CONSTRAINT fk_team_operation
+        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation)
+        ON DELETE CASCADE ON UPDATE CASCADE,
 
-    CONSTRAINT chk_role_in_operation CHECK (
-        role_in_operation IN (
-            'surgeon',
-            'assistant_surgeon',
-            'anaesthesiologist',
-            'nurse'
-        )
-    ),
+    CONSTRAINT fk_team_professional
+        FOREIGN KEY (id_professional) REFERENCES professionals(id_professional)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
 
-    CONSTRAINT fk_op_team_operation
-        FOREIGN KEY (id_operation)
-        REFERENCES surgical_operations(id_operation)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-
-    CONSTRAINT fk_op_team_professional
-        FOREIGN KEY (id_professional)
-        REFERENCES professionals(id_professional)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+    CONSTRAINT uq_operation_professional_role
+        UNIQUE (id_operation, id_professional, team_role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 CREATE TABLE operation_costs (
     id_operation_cost INT AUTO_INCREMENT PRIMARY KEY,
 
@@ -246,33 +222,22 @@ CREATE TABLE operation_costs (
 
 CREATE TABLE surgical_complications (
     id_complication INT AUTO_INCREMENT PRIMARY KEY,
-
     id_operation INT NOT NULL,
-
-    complication_type VARCHAR(100) NOT NULL,
-    detection_date DATETIME NOT NULL,
-    description TEXT,
-
-    severity VARCHAR(20)
-        CHECK (severity IN (
-            'mild',
-            'moderate',
-            'severe',
-            'critical'
-        )),
-
-    status_sc VARCHAR(30) NOT NULL
-        CHECK (status_sc IN (
-            'active',
-            'under treatment',
-            'resolved'
-        )),
+    readmission_episode_id INT NULL,
+    id_professional INT NULL,
+    complication_code VARCHAR(20) NULL,
+    complication_type VARCHAR(150) NOT NULL,
+    severity ENUM('Mild', 'Moderate', 'Severe', 'Critical') NOT NULL DEFAULT 'Moderate',
+    detected_at DATETIME NOT NULL,
+    description TEXT NULL,
 
     CONSTRAINT fk_complications_operation
-        FOREIGN KEY (id_operation)
-        REFERENCES surgical_operations(id_operation)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
+        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation)
+        ON DELETE RESTRICT ON UPDATE CASCADE,
+
+    CONSTRAINT fk_complications_professional
+        FOREIGN KEY (id_professional) REFERENCES professionals(id_professional)
+        ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE surgical_reports (
@@ -412,3 +377,23 @@ CREATE TABLE interconsultations (
     CONSTRAINT chk_interconsultations_status
         CHECK (status_ic IN ('Pending', 'accepted', 'completed', 'cancelled'))
 );
+
+CREATE TABLE surgical_consumptions (
+    id_consumption INT AUTO_INCREMENT PRIMARY KEY,
+    id_operation INT NOT NULL,
+    item_code VARCHAR(50) NULL,
+    item_description VARCHAR(255) NOT NULL,
+    item_category ENUM('Disposable_material', 'Procedure', 'Device', 'Other') NOT NULL DEFAULT 'Disposable_material',
+    quantity DECIMAL(10, 2) NOT NULL,
+    unit_label VARCHAR(30) NOT NULL DEFAULT 'unit',
+    unit_cost DECIMAL(10, 2) NOT NULL,
+    total_cost DECIMAL(10, 2) AS (ROUND(quantity * unit_cost, 2)) STORED,
+    recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_consumptions_operation
+        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    CONSTRAINT chk_consumptions_positive
+        CHECK (quantity > 0 AND unit_cost >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
