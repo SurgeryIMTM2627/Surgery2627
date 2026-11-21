@@ -19,70 +19,24 @@ DROP TABLE IF EXISTS surgical_complications;
 DROP TABLE IF EXISTS checklist;
 DROP TABLE IF EXISTS interconsultations;
 DROP TABLE IF EXISTS professional_audit_log;
-DROP TABLE IF EXISTS surgical_consumptions;
 
 -- 3. Volver a activar las restricciones
 SET FOREIGN_KEY_CHECKS = 1;
-CREATE TABLE professionals (
-    id_professional INT AUTO_INCREMENT PRIMARY KEY,
-    professional_name VARCHAR(150) NOT NULL,
-    professional_type VARCHAR(30) NOT NULL,
-    professional_category VARCHAR(30) NOT NULL,
-    professional_email VARCHAR(255) UNIQUE,
-    professional_phone VARCHAR(25),
-
-    CONSTRAINT chk_professional_type CHECK (
-        professional_type IN ('surgery', 'anaesthesia', 'nursing')
-    ),
-
-    CONSTRAINT chk_professional_category CHECK (
-        professional_category IN ('Resident', 'Specialist', 'Consultant')
-    )
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE operating_rooms (
     id_operating_room INT AUTO_INCREMENT PRIMARY KEY,
-    room_code VARCHAR(30) NOT NULL UNIQUE,
-    room_name VARCHAR(120) NOT NULL,
-    room_type ENUM('Emergency', 'Scheduled', 'Outpatient', 'Dressing') NOT NULL DEFAULT 'Scheduled',
-    isolation_capacity ENUM('None', 'Contact', 'Respiratory', 'Negative_pressure') NOT NULL DEFAULT 'None',
-    cost_per_minute DECIMAL(8, 2) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-    CONSTRAINT chk_operating_rooms_cost CHECK (cost_per_minute >= 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE system_users (
-    id_user INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    user_email VARCHAR(255) NOT NULL UNIQUE,
-    user_role VARCHAR(50) NOT NULL
-        CHECK (user_role IN (
-            'surgeon',
-            'head of surgery',
-            'financial administrator',
-            'scheduler'
-        )),
-    id_professional INT UNIQUE,
-    CONSTRAINT fk_system_users_professional
-        FOREIGN KEY (id_professional)
-        REFERENCES professionals(id_professional)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE procedures (
-    id_procedure INT AUTO_INCREMENT PRIMARY KEY,
-    procedure_code VARCHAR(50) NOT NULL UNIQUE,
-    procedure_name VARCHAR(200) NOT NULL
+    room_code VARCHAR(50) NOT NULL UNIQUE,
+    room_name VARCHAR(100) NOT NULL,
+    room_type VARCHAR(30) NOT NULL
+        CHECK (room_type IN ('urgent', 'programmed', 'hybrid')),
+    room_state VARCHAR(30) NOT NULL
+        CHECK (room_state IN ('available', 'occupied', 'blocked', 'maintenance'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE surgical_operations (
     id_operation INT AUTO_INCREMENT PRIMARY KEY,
     id_patient INT NOT NULL,
     id_episode INT NOT NULL,
-    id__room INT NOT NULL,
+    id_operating_room INT NOT NULL,
     parent_operation_id INT NULL,
     procedure_code VARCHAR(30) NULL,
     procedure_name VARCHAR(255) NOT NULL,
@@ -107,7 +61,7 @@ CREATE TABLE surgical_operations (
         ON DELETE RESTRICT ON UPDATE CASCADE,
 
     CONSTRAINT fk_operations_parent
-        FOREIGN KEY (parent_operation_id) REFERENCES surgical_operations(id_operating_room)
+        FOREIGN KEY (parent_operation_id) REFERENCES surgical_operations(id_operation)
         ON DELETE SET NULL ON UPDATE CASCADE,
 
     CONSTRAINT chk_operations_real_times
@@ -117,56 +71,6 @@ CREATE TABLE surgical_operations (
         )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE schedule (
-    id_schedule INT AUTO_INCREMENT PRIMARY KEY,
-
-    id_operation INT NOT NULL,
-    id_operating_room INT NOT NULL,
-
-    scheduled_surgery_start DATETIME NOT NULL,
-    scheduled_surgery_end DATETIME NOT NULL,
-
-    scheduled_room_start DATETIME NOT NULL,
-    scheduled_room_end DATETIME NOT NULL,
-
-    status_s VARCHAR(30) NOT NULL,
-    rescheduled_from INT NULL,
-
-    CONSTRAINT chk_status_s CHECK (
-        status_s IN ('scheduled', 'confirmed', 'cancelled', 'rescheduled', 'completed')
-    ),
-
-    CONSTRAINT fk_schedule_operation
-        FOREIGN KEY (id_operation)
-        REFERENCES surgical_operations(id_operation)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-
-    CONSTRAINT fk_schedule_room
-        FOREIGN KEY (id_operating_room)
-        REFERENCES operating_rooms(id_operating_room)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE,
-
-    CONSTRAINT fk_schedule_rescheduled_from
-        FOREIGN KEY (rescheduled_from)
-        REFERENCES schedule(id_schedule)
-        ON DELETE SET NULL
-        ON UPDATE CASCADE,
-
-    CONSTRAINT chk_scheduled_surgery_times CHECK (
-        scheduled_surgery_end > scheduled_surgery_start
-    ),
-
-    CONSTRAINT chk_scheduled_room_times CHECK (
-        scheduled_room_end > scheduled_room_start
-    ),
-
-    CONSTRAINT chk_scheduled_room_vs_surgery CHECK (
-        scheduled_room_start <= scheduled_surgery_start
-        AND scheduled_room_end >= scheduled_surgery_end
-    )
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE operation_team (
     id_operation_team INT AUTO_INCREMENT PRIMARY KEY,
@@ -386,22 +290,3 @@ CREATE TABLE interconsultations (
         CHECK (status_ic IN ('Pending', 'accepted', 'completed', 'cancelled'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE surgical_consumptions (
-    id_consumption INT AUTO_INCREMENT PRIMARY KEY,
-    id_operation INT NOT NULL,
-    item_code VARCHAR(50) NULL,
-    item_description VARCHAR(255) NOT NULL,
-    item_category ENUM('Disposable_material', 'Procedure', 'Device', 'Other') NOT NULL DEFAULT 'Disposable_material',
-    quantity DECIMAL(10, 2) NOT NULL,
-    unit_label VARCHAR(30) NOT NULL DEFAULT 'unit',
-    unit_cost DECIMAL(10, 2) NOT NULL,
-    total_cost DECIMAL(10, 2) AS (ROUND(quantity * unit_cost, 2)) STORED,
-    recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_consumptions_operation
-        FOREIGN KEY (id_operation) REFERENCES surgical_operations(id_operation)
-        ON DELETE CASCADE ON UPDATE CASCADE,
-
-    CONSTRAINT chk_consumptions_positive
-        CHECK (quantity > 0 AND unit_cost >= 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
