@@ -25,11 +25,12 @@ SET FOREIGN_KEY_CHECKS = 1;
 CREATE TABLE operating_rooms (
     id_operating_room INT AUTO_INCREMENT PRIMARY KEY,
     room_code VARCHAR(50) NOT NULL UNIQUE,
+        CHECK (room_code IN ('OR-URG-01', 'OR-URG-02', 'OR-URG-03', 'OR-PROG-01', 'OR-PROG-02', 'OR-PROG-03', 'OR-PROG-04', 'OR-PROG-05', 'OR-HYB-01')),
     room_name VARCHAR(100) NOT NULL,
     room_type VARCHAR(30) NOT NULL
         CHECK (room_type IN ('urgent', 'programmed', 'hybrid')),
     room_state VARCHAR(30) NOT NULL
-        CHECK (room_state IN ('available', 'occupied', 'blocked', 'maintenance'))
+        CHECK (room_state IN ('available', 'not available'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE surgical_operations (
