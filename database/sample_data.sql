@@ -17,19 +17,12 @@ TRUNCATE TABLE surgical_operations;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
-INSERT INTO operating_rooms (
-    id_operating_room,
-    room_code,
-    room_name,
-    room_type,
-    room_state
-) VALUES (
-    1,
-    'OR-URG-01',
-    'Urgent OR',
-    'urgent',
-    'available'
-);
+INSERT INTO operationg 
+  (room_code, room_name, room_type, room_state)
+VALUES
+  ('OR-URG-01', 'Urgent OR 01', 'Urgent', 'available'),
+  ('OR-PROG-01', 'Programmed OR 01', 'Programmed', 'available'),
+  ('OR-PROG-02', 'Programmed OR 02', 'Programmed', 'available');
 
 -- 2. A partir de aquí, tus sentencias INSERT INTO
 INSERT INTO surgical_operations (
